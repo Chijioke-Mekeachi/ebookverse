@@ -11,24 +11,28 @@ import {
   ActivityIndicator,
   ScrollView,
   Image,
+  Dimensions,
+  useWindowDimensions,
 } from 'react-native';
 import { useBooks } from '../contexts/BooksContext';
 import { useNavigation } from '@react-navigation/native';
+import { useTheme, ThemeConstants } from '../contexts/ThemeContext';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
-// Static colors for light theme
-const colors = {
-  primary: '#6366f1',
-  background: '#ffffff',
-  card: '#f8fafc',
-  text: '#1e293b',
-  textSecondary: '#64748b',
-  border: '#e2e8f0',
-};
+const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 const HomeScreen = () => {
   const { books, isLoading } = useBooks();
   const navigation = useNavigation();
+  const { 
+    colors, 
+    isDark, 
+    toggleTheme, 
+    animationEnabled,
+    getColorWithOpacity 
+  } = useTheme();
+  
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [refreshing, setRefreshing] = useState(false);
@@ -47,127 +51,188 @@ const HomeScreen = () => {
     setTimeout(() => setRefreshing(false), 1000);
   };
 
+  // Responsive sizing based on screen dimensions
+  const responsiveSize = {
+    padding: {
+      sm: Math.max(8, windowWidth * 0.02),
+      md: Math.max(16, windowWidth * 0.04),
+      lg: Math.max(20, windowWidth * 0.05),
+      xl: Math.max(24, windowWidth * 0.06),
+    },
+    font: {
+      xs: Math.max(12, windowWidth * 0.03),
+      sm: Math.max(14, windowWidth * 0.035),
+      md: Math.max(16, windowWidth * 0.04),
+      lg: Math.max(18, windowWidth * 0.045),
+      xl: Math.max(20, windowWidth * 0.05),
+      xxl: Math.max(24, windowWidth * 0.06),
+      xxxl: Math.max(32, windowWidth * 0.08),
+    },
+    image: {
+      width: Math.max(80, windowWidth * 0.2),
+      height: Math.max(120, windowWidth * 0.3),
+    },
+    card: {
+      margin: Math.max(8, windowWidth * 0.02),
+      padding: Math.max(16, windowWidth * 0.04),
+    }
+  };
+
   const styles = StyleSheet.create({
     container: {
       flex: 1,
       backgroundColor: colors.background,
+      maxWidth: 500, // Maintain formal size on tablets
+      alignSelf: 'center', // Center on wider screens
+      width: '100%', // Full width on mobile
     },
     header: {
-      padding: 20,
+      padding: responsiveSize.padding.lg,
       paddingBottom: 0,
     },
+    headerRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'flex-start',
+      marginBottom: responsiveSize.padding.sm,
+    },
+    titleContainer: {
+      flex: 1,
+      marginRight: responsiveSize.padding.md,
+    },
     title: {
-      fontSize: 32,
-      fontWeight: '700',
+      fontSize: responsiveSize.font.xxxl,
+      fontWeight: ThemeConstants.typography.weights.bold,
       color: colors.text,
-      marginBottom: 8,
+      marginBottom: responsiveSize.padding.xs,
     },
     subtitle: {
-      fontSize: 16,
+      fontSize: responsiveSize.font.md,
       color: colors.textSecondary,
-      marginBottom: 20,
+      marginBottom: responsiveSize.padding.lg,
+      lineHeight: 20,
+    },
+    themeToggle: {
+      padding: responsiveSize.padding.sm,
+      borderRadius: ThemeConstants.borderRadius.round,
+      backgroundColor: getColorWithOpacity('primary', 0.1),
+      marginTop: responsiveSize.padding.xs,
     },
     searchContainer: {
       flexDirection: 'row',
       alignItems: 'center',
-      backgroundColor: colors.card,
-      borderRadius: 12,
-      paddingHorizontal: 16,
-      marginBottom: 20,
+      backgroundColor: colors.surface,
+      borderRadius: ThemeConstants.borderRadius.lg,
+      paddingHorizontal: responsiveSize.padding.md,
+      marginBottom: responsiveSize.padding.lg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      minHeight: 52,
+      ...ThemeConstants.elevation.sm,
     },
     searchInput: {
       flex: 1,
-      paddingVertical: 12,
-      paddingHorizontal: 12,
+      paddingVertical: responsiveSize.padding.md,
+      paddingHorizontal: responsiveSize.padding.sm,
       color: colors.text,
-      fontSize: 16,
-      outlineWidth:0,
+      fontSize: responsiveSize.font.md,
+      includeFontPadding: false,
     },
     categoriesContainer: {
-      paddingHorizontal: 20,
-      marginBottom: 20,
+      paddingHorizontal: responsiveSize.padding.lg,
+      marginBottom: responsiveSize.padding.lg,
     },
     categoriesScroll: {
       flexDirection: 'row',
     },
     categoryChip: {
-      paddingHorizontal: 16,
-      paddingVertical: 8,
-      borderRadius: 20,
-      marginRight: 8,
-      backgroundColor: colors.card,
+      paddingHorizontal: responsiveSize.padding.md,
+      paddingVertical: responsiveSize.padding.sm,
+      borderRadius: ThemeConstants.borderRadius.round,
+      marginRight: responsiveSize.padding.sm,
+      backgroundColor: colors.surfaceVariant,
+      borderWidth: 1,
+      borderColor: colors.border,
+      minHeight: 36,
     },
     categoryChipSelected: {
       backgroundColor: colors.primary,
+      borderColor: colors.primary,
     },
     categoryText: {
-      fontSize: 14,
-      fontWeight: '500',
-      color: colors.text,
+      fontSize: responsiveSize.font.sm,
+      fontWeight: ThemeConstants.typography.weights.medium,
+      color: colors.textSecondary,
+      textAlign: 'center',
     },
     categoryTextSelected: {
-      color: '#ffffff',
+      color: colors.onPrimary,
     },
     sectionTitle: {
-      fontSize: 22,
-      fontWeight: '700',
+      fontSize: responsiveSize.font.xxl,
+      fontWeight: ThemeConstants.typography.weights.bold,
       color: colors.text,
-      marginHorizontal: 20,
-      marginBottom: 16,
+      marginHorizontal: responsiveSize.padding.lg,
+      marginBottom: responsiveSize.padding.md,
     },
     booksList: {
-      paddingHorizontal: 20,
+      paddingHorizontal: responsiveSize.padding.lg,
+      flex: 1,
     },
     bookCard: {
-      backgroundColor: colors.card,
-      borderRadius: 16,
-      padding: 16,
-      marginBottom: 16,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.1,
-      shadowRadius: 8,
-      elevation: 4,
+      backgroundColor: colors.surface,
+      borderRadius: ThemeConstants.borderRadius.lg,
+      padding: responsiveSize.card.padding,
+      marginBottom: responsiveSize.card.margin,
+      borderWidth: 1,
+      borderColor: colors.borderLight,
+      minHeight: 152,
+      ...ThemeConstants.elevation.sm,
     },
     bookCardContent: {
       flexDirection: 'row',
+      flex: 1,
     },
     coverImage: {
-      width: 80,
-      height: 120,
-      borderRadius: 8,
-      backgroundColor: colors.border,
+      width: responsiveSize.image.width,
+      height: responsiveSize.image.height,
+      borderRadius: ThemeConstants.borderRadius.md,
+      backgroundColor: colors.surfaceVariant,
     },
     bookInfo: {
       flex: 1,
-      marginLeft: 16,
+      marginLeft: responsiveSize.padding.md,
       justifyContent: 'space-between',
     },
     bookTitle: {
-      fontSize: 18,
-      fontWeight: '600',
+      fontSize: responsiveSize.font.lg,
+      fontWeight: ThemeConstants.typography.weights.semibold,
       color: colors.text,
-      marginBottom: 4,
+      marginBottom: responsiveSize.padding.xs,
+      lineHeight: 22,
     },
     bookAuthor: {
-      fontSize: 14,
+      fontSize: responsiveSize.font.sm,
       color: colors.textSecondary,
-      marginBottom: 8,
+      marginBottom: responsiveSize.padding.sm,
+      lineHeight: 18,
     },
     bookDescription: {
-      fontSize: 12,
-      color: colors.textSecondary,
-      marginBottom: 8,
+      fontSize: responsiveSize.font.xs,
+      color: colors.textTertiary,
+      marginBottom: responsiveSize.padding.sm,
       lineHeight: 16,
+      flex: 1,
     },
     priceContainer: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
+      marginTop: responsiveSize.padding.sm,
     },
     price: {
-      fontSize: 16,
-      fontWeight: '700',
+      fontSize: responsiveSize.font.md,
+      fontWeight: ThemeConstants.typography.weights.bold,
       color: colors.primary,
     },
     ratingContainer: {
@@ -178,22 +243,59 @@ const HomeScreen = () => {
       flex: 1,
       justifyContent: 'center',
       alignItems: 'center',
+      backgroundColor: colors.background,
+      maxWidth: 500,
+      alignSelf: 'center',
+      width: '100%',
+    },
+    emptyState: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingHorizontal: responsiveSize.padding.xl,
+      minHeight: 300,
+    },
+    emptyStateText: {
+      fontSize: responsiveSize.font.lg,
+      color: colors.textSecondary,
+      textAlign: 'center',
+      marginTop: responsiveSize.padding.md,
+      lineHeight: 24,
+    },
+    emptyStateSubtext: {
+      fontSize: responsiveSize.font.md,
+      color: colors.textTertiary,
+      textAlign: 'center',
+      marginTop: responsiveSize.padding.sm,
+      lineHeight: 20,
+    },
+    contentContainer: {
+      flexGrow: 1,
     },
   });
 
-  const renderBookItem = ({ item }) => (
+  const renderBookItem = ({ item, index }) => (
     <TouchableOpacity
       style={styles.bookCard}
       onPress={() => navigation.navigate('BookDetails', { book: item })}
       activeOpacity={0.7}
     >
       <View style={styles.bookCardContent}>
-        <Image source={{ uri: item.cover }} style={styles.coverImage} />
+        <Image 
+          source={{ uri: item.cover }} 
+          style={styles.coverImage}
+          defaultSource={require('../../assets/logo.png')}
+          resizeMode="cover"
+        />
         <View style={styles.bookInfo}>
-          <View>
-            <Text style={styles.bookTitle} numberOfLines={2}>{item.title}</Text>
-            <Text style={styles.bookAuthor}>{item.author}</Text>
-            <Text style={styles.bookDescription} numberOfLines={2}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.bookTitle} numberOfLines={2} ellipsizeMode="tail">
+              {item.title}
+            </Text>
+            <Text style={styles.bookAuthor} numberOfLines={1} ellipsizeMode="tail">
+              {item.author}
+            </Text>
+            <Text style={styles.bookDescription} numberOfLines={3} ellipsizeMode="tail">
               {item.description}
             </Text>
           </View>
@@ -203,7 +305,9 @@ const HomeScreen = () => {
             </Text>
             <View style={styles.ratingContainer}>
               <Ionicons name="star" size={16} color="#fbbf24" />
-              <Text style={[styles.bookAuthor, { marginLeft: 4 }]}>{item.rating}</Text>
+              <Text style={[styles.bookAuthor, { marginLeft: 4 }]}>
+                {item.rating}
+              </Text>
             </View>
           </View>
         </View>
@@ -211,10 +315,29 @@ const HomeScreen = () => {
     </TouchableOpacity>
   );
 
+  const renderEmptyState = () => (
+    <View style={styles.emptyState}>
+      <Ionicons 
+        name="book-outline" 
+        size={64} 
+        color={colors.textTertiary} 
+      />
+      <Text style={styles.emptyStateText}>
+        No books found
+      </Text>
+      <Text style={styles.emptyStateSubtext}>
+        {searchQuery ? 'Try adjusting your search terms' : 'No books available in this category'}
+      </Text>
+    </View>
+  );
+
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={[styles.emptyStateText, { marginTop: responsiveSize.padding.md }]}>
+          Loading books...
+        </Text>
       </View>
     );
   }
@@ -222,17 +345,52 @@ const HomeScreen = () => {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>EBookVerse</Text>
-        <Text style={styles.subtitle}>Discover your next favorite book</Text>
+        <View style={styles.headerRow}>
+          <View style={styles.titleContainer}>
+            <Text style={styles.title}>EBookVerse</Text>
+            <Text style={styles.subtitle}>Discover your next favorite book</Text>
+          </View>
+          <TouchableOpacity 
+            style={styles.themeToggle}
+            onPress={toggleTheme}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Ionicons 
+              name={isDark ? "sunny" : "moon"} 
+              size={24} 
+              color={colors.primary} 
+            />
+          </TouchableOpacity>
+        </View>
+        
         <View style={styles.searchContainer}>
-          <Ionicons name="search" size={20} color={colors.textSecondary} />
+          <Ionicons 
+            name="search" 
+            size={20} 
+            color={colors.textSecondary} 
+          />
           <TextInput
             style={styles.searchInput}
             placeholder="Search books or authors..."
-            placeholderTextColor={colors.textSecondary}
+            placeholderTextColor={colors.textTertiary}
             value={searchQuery}
             onChangeText={setSearchQuery}
+            clearButtonMode="while-editing"
+            returnKeyType="search"
+            enablesReturnKeyAutomatically={true}
           />
+          {searchQuery ? (
+            <TouchableOpacity 
+              onPress={() => setSearchQuery('')}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons 
+                name="close-circle" 
+                size={20} 
+                color={colors.textTertiary} 
+              />
+            </TouchableOpacity>
+          ) : null}
         </View>
       </View>
 
@@ -241,6 +399,7 @@ const HomeScreen = () => {
           horizontal 
           showsHorizontalScrollIndicator={false}
           style={styles.categoriesScroll}
+          contentContainerStyle={{ paddingRight: responsiveSize.padding.lg }}
         >
           {categories.map(category => (
             <TouchableOpacity
@@ -264,6 +423,7 @@ const HomeScreen = () => {
 
       <Text style={styles.sectionTitle}>
         {selectedCategory === 'All' ? 'Featured Books' : selectedCategory}
+        {filteredBooks.length > 0 && ` (${filteredBooks.length})`}
       </Text>
 
       <FlatList
@@ -277,8 +437,17 @@ const HomeScreen = () => {
             refreshing={refreshing}
             onRefresh={onRefresh}
             colors={[colors.primary]}
+            tintColor={colors.primary}
           />
         }
+        ListEmptyComponent={renderEmptyState}
+        contentContainerStyle={
+          filteredBooks.length === 0 ? styles.contentContainer : styles.contentContainer
+        }
+        initialNumToRender={8}
+        maxToRenderPerBatch={10}
+        windowSize={5}
+        removeClippedSubviews={true}
       />
     </View>
   );

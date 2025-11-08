@@ -10,21 +10,22 @@ const OnboardingScreen = () => {
   const styles = StyleSheet.create({
     container: {
       flex: 1,
-
+      backgroundColor: '#3333AA',
       padding: 20,
       justifyContent: 'center',
       alignItems: 'center',
+      paddingVertical:100,
     },
     title: {
       fontSize: 36,
       fontWeight: '700',
-
+      color: '#FFFFFF',
       marginBottom: 20,
       textAlign: 'center',
     },
     subtitle: {
       fontSize: 18,
-      // color: colors.textSecondary,
+      color: '#FFFFFF',
       textAlign: 'center',
       marginBottom: 40,
     },
@@ -32,18 +33,21 @@ const OnboardingScreen = () => {
       borderRadius: 12,
       padding: 16,
       alignItems: 'center',
-      width: '100%',
+      width: '90%',
       marginBottom: 12,
+      height:60,
+      justifyContent:'center',
+      backgroundColor: '#FFFFFF',
     },
     buttonText: {
-      color: '#ffffff',
+      color: '#3388FF',
       fontSize: 18,
       fontWeight: '600',
     },
     secondaryButton: {
       backgroundColor: 'transparent',
       borderWidth: 2,
-      // borderColor: colors.primary,
+      borderColor: '#3388FF',
     },
     secondaryButtonText: {
       // color: colors.primary,
@@ -57,7 +61,8 @@ const OnboardingScreen = () => {
         Your digital library in your pocket{'\n'}
         Read anytime, anywhere
       </Text>
-      <TouchableOpacity 
+      <View style={{flex:1, justifyContent: 'flex-end', alignItems:'center', width:'100%'}}>
+        <TouchableOpacity 
         style={styles.button}
         onPress={() => navigation.navigate('Register')}
       >
@@ -71,6 +76,8 @@ const OnboardingScreen = () => {
           I have an account
         </Text>
       </TouchableOpacity>
+      </View>
+
     </View>
   );
 };

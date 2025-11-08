@@ -1,5 +1,5 @@
 // src/screens/ReaderScreen.js
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -11,7 +11,9 @@ import {
   Dimensions,
   ScrollView,
   Image,
-  FlatList,
+  Animated,
+  SafeAreaView,
+  Platform,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { useTheme } from '../contexts/ThemeContext';
@@ -21,12 +23,32 @@ import EPUBViewer from '../services/epubViewer';
 import { bookService, formatPageCount, getReadingTime } from '../services/bookService';
 
 const { width, height } = Dimensions.get('window');
+const CONTROLS_AUTO_HIDE_TIMEOUT = 4000;
+
+// Get safe area insets for different devices
+const getSafeAreaInsets = () => {
+  if (Platform.OS === 'ios') {
+    return {
+      top: 44,
+      bottom: 34,
+    };
+  } else {
+    return {
+      top: StatusBar.currentHeight || 25,
+      bottom: 0,
+    };
+  }
+};
 
 const ReaderScreen = () => {
   const { colors, isDark } = useTheme();
-  const navigation = useNavigation();
+  const navigation = useRoute();
   const route = useRoute();
   const { book } = route.params || {};
+  
+  const safeArea = getSafeAreaInsets();
+  
+  // State management
   const [fontSize, setFontSize] = useState(16);
   const [isControlsVisible, setIsControlsVisible] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
@@ -41,9 +63,80 @@ const ReaderScreen = () => {
   const [availableBooks, setAvailableBooks] = useState([]);
   const [currentBookMetadata, setCurrentBookMetadata] = useState(null);
   const [chapters, setChapters] = useState([]);
+  
+  // Refs
   const webViewRef = useRef(null);
+  const scrollViewRef = useRef(null);
+  const controlsTimeoutRef = useRef(null);
+  const fadeAnim = useRef(new Animated.Value(1)).current;
 
-  // Load available books from bookService
+  // Memoized values
+  const progressPercentage = useMemo(() => 
+    totalChapters > 0 ? ((currentChapter + 1) / totalChapters) * 100 : 0,
+    [currentChapter, totalChapters]
+  );
+
+  // Auto-hide controls
+  const resetControlsTimer = useCallback(() => {
+    if (controlsTimeoutRef.current) {
+      clearTimeout(controlsTimeoutRef.current);
+    }
+    
+    if (isControlsVisible) {
+      controlsTimeoutRef.current = setTimeout(() => {
+        Animated.timing(fadeAnim, {
+          toValue: 0,
+          duration: 300,
+          useNativeDriver: true,
+        }).start(({ finished }) => {
+          if (finished) {
+            setIsControlsVisible(false);
+          }
+        });
+      }, CONTROLS_AUTO_HIDE_TIMEOUT);
+    }
+  }, [isControlsVisible, fadeAnim]);
+
+  const showControls = useCallback(() => {
+    if (controlsTimeoutRef.current) {
+      clearTimeout(controlsTimeoutRef.current);
+    }
+    
+    setIsControlsVisible(true);
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
+    
+    resetControlsTimer();
+  }, [resetControlsTimer, fadeAnim]);
+
+  const hideControls = useCallback(() => {
+    if (controlsTimeoutRef.current) {
+      clearTimeout(controlsTimeoutRef.current);
+    }
+    
+    Animated.timing(fadeAnim, {
+      toValue: 0,
+      duration: 300,
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (finished) {
+        setIsControlsVisible(false);
+      }
+    });
+  }, [fadeAnim]);
+
+  const toggleControls = useCallback(() => {
+    if (isControlsVisible) {
+      hideControls();
+    } else {
+      showControls();
+    }
+  }, [isControlsVisible, showControls, hideControls]);
+
+  // Load available books
   useEffect(() => {
     const loadBooks = async () => {
       try {
@@ -66,11 +159,9 @@ const ReaderScreen = () => {
         let bookMetadata = book;
 
         if (book?.bookUrl) {
-          // Use the book from navigation params
           epubFile = book.bookUrl;
           bookMetadata = book;
         } else {
-          // Use a random book from our service
           const books = await bookService.fetchBooks();
           const randomBook = books[Math.floor(Math.random() * books.length)];
           epubFile = randomBook.bookUrl;
@@ -97,6 +188,7 @@ const ReaderScreen = () => {
         
         epubViewer.on('error', (error) => {
           console.log('EPUB viewer error:', error.message);
+          Alert.alert('Error', 'Failed to load book content');
         });
         
         await epubViewer.init();
@@ -127,9 +219,10 @@ const ReaderScreen = () => {
     if (webViewRef.current && chapterContent) {
       const script = `
         (function() {
-          // Update font size
+          // Update font size and spacing
           document.body.style.fontSize = '${fontSize}px';
           document.body.style.lineHeight = '${fontSize * 1.6}px';
+          document.body.style.letterSpacing = '0.3px';
           
           // Update colors for dark/light mode
           document.body.style.color = '${isDark ? '#e0e0e0' : '#333'}';
@@ -139,6 +232,7 @@ const ReaderScreen = () => {
           const headings = document.querySelectorAll('h1, h2, h3, h4, h5, h6');
           headings.forEach(heading => {
             heading.style.color = '${isDark ? '#ffffff' : '#2c3e50'}';
+            heading.style.marginBottom = '0.8em';
           });
           
           // Update blockquote styles
@@ -146,7 +240,31 @@ const ReaderScreen = () => {
           blockquotes.forEach(blockquote => {
             blockquote.style.backgroundColor = '${isDark ? '#2d2d2d' : '#f8f9fa'}';
             blockquote.style.borderLeftColor = '${colors.primary}';
+            blockquote.style.borderLeftWidth = '4px';
+            blockquote.style.padding = '12px 16px';
+            blockquote.style.margin = '16px 0';
           });
+          
+          // Improve paragraph spacing
+          const paragraphs = document.querySelectorAll('p');
+          paragraphs.forEach(p => {
+            p.style.marginBottom = '1.2em';
+          });
+          
+          // Enable scrolling and make content fit properly
+          document.body.style.height = 'auto';
+          document.body.style.minHeight = '100%';
+          document.body.style.overflow = 'visible';
+          document.documentElement.style.height = 'auto';
+          document.documentElement.style.minHeight = '100%';
+          
+          // Add responsive padding for better reading
+          const isMobile = window.innerWidth < 768;
+          document.body.style.padding = isMobile ? '20px 16px' : '30px 24px';
+          document.body.style.maxWidth = '680px';
+          document.body.style.margin = '0 auto';
+          document.body.style.wordWrap = 'break-word';
+          document.body.style.textAlign = 'justify';
           
           // Scroll to top when chapter changes
           window.scrollTo(0, 0);
@@ -158,19 +276,39 @@ const ReaderScreen = () => {
     }
   }, [chapterContent, fontSize, isDark, colors.primary]);
 
-  const toggleControls = () => {
-    setIsControlsVisible(!isControlsVisible);
-  };
+  // Scroll to current chapter when chapter list opens
+  useEffect(() => {
+    if (showChapterList && scrollViewRef.current && chapters.length > 0) {
+      setTimeout(() => {
+        const itemHeight = 56;
+        const scrollToY = Math.max(0, (currentChapter - 2) * itemHeight);
+        scrollViewRef.current?.scrollTo({ y: scrollToY, animated: true });
+      }, 100);
+    }
+  }, [showChapterList, currentChapter, chapters.length]);
+
+  // Set up auto-hide controls
+  useEffect(() => {
+    resetControlsTimer();
+    return () => {
+      if (controlsTimeoutRef.current) {
+        clearTimeout(controlsTimeoutRef.current);
+      }
+    };
+  }, [resetControlsTimer]);
 
   const increaseFontSize = () => {
     setFontSize(prev => Math.min(prev + 1, 24));
+    resetControlsTimer();
   };
 
   const decreaseFontSize = () => {
     setFontSize(prev => Math.max(prev - 1, 12));
+    resetControlsTimer();
   };
 
   const goToNextChapter = async () => {
+    console.log('Next chapter button pressed');
     if (!viewer || currentChapter >= totalChapters - 1) {
       Alert.alert('Finished', 'You have reached the end of the book!');
       return;
@@ -181,6 +319,7 @@ const ReaderScreen = () => {
       const content = await viewer.next();
       setCurrentChapter(viewer.getCurrentChapterIndex());
       setChapterContent(content);
+      resetControlsTimer();
     } catch (error) {
       console.error('Failed to load next chapter:', error);
       Alert.alert('Error', 'Failed to load next chapter');
@@ -190,6 +329,7 @@ const ReaderScreen = () => {
   };
 
   const goToPreviousChapter = async () => {
+    console.log('Previous chapter button pressed');
     if (!viewer || currentChapter <= 0) {
       Alert.alert('Start', 'You are at the beginning of the book!');
       return;
@@ -200,6 +340,7 @@ const ReaderScreen = () => {
       const content = await viewer.previous();
       setCurrentChapter(viewer.getCurrentChapterIndex());
       setChapterContent(content);
+      resetControlsTimer();
     } catch (error) {
       console.error('Failed to load previous chapter:', error);
       Alert.alert('Error', 'Failed to load previous chapter');
@@ -217,6 +358,7 @@ const ReaderScreen = () => {
       const content = await viewer.goToChapter(index);
       setCurrentChapter(index);
       setChapterContent(content);
+      resetControlsTimer();
     } catch (error) {
       console.error('Failed to load chapter:', error);
       Alert.alert('Error', 'Failed to load chapter');
@@ -255,10 +397,6 @@ const ReaderScreen = () => {
     }
   };
 
-  const getProgressPercentage = () => {
-    return totalChapters > 0 ? ((currentChapter + 1) / totalChapters) * 100 : 0;
-  };
-
   const handleWebViewMessage = (event) => {
     try {
       const data = JSON.parse(event.nativeEvent.data);
@@ -268,81 +406,28 @@ const ReaderScreen = () => {
     }
   };
 
-  const renderBookItem = (bookItem) => (
-    <TouchableOpacity
-      key={bookItem.id}
-      style={styles.bookItem}
-      onPress={() => loadNewBook(bookItem)}
-    >
-      <View style={styles.bookItemHeader}>
-        <Image 
-          source={{ uri: bookItem.cover }} 
-          style={styles.bookCover}
-          resizeMode="cover"
-        />
-        <View style={styles.bookInfo}>
-          <Text style={styles.bookTitle} numberOfLines={2}>{bookItem.title}</Text>
-          <Text style={styles.bookAuthor}>by {bookItem.author}</Text>
-          <View style={styles.bookMeta}>
-            <Text style={styles.bookMetaText}>{formatPageCount(bookItem.pages)}</Text>
-            <Text style={styles.bookMetaText}>•</Text>
-            <Text style={styles.bookMetaText}>{getReadingTime(bookItem.content.wordCount)}</Text>
-            <Text style={styles.bookMetaText}>•</Text>
-            <Text style={styles.bookMetaText}>{bookItem.rating} ★</Text>
-          </View>
-        </View>
-      </View>
-      <Text style={styles.bookDescription} numberOfLines={2}>
-        {bookItem.description}
-      </Text>
-      <View style={styles.bookFooter}>
-        <View style={[styles.categoryBadge, { backgroundColor: colors.primary }]}>
-          <Text style={styles.categoryText}>{bookItem.category}</Text>
-        </View>
-        <Text style={styles.publishedText}>{bookItem.published > 0 ? bookItem.published : Math.abs(bookItem.published) + ' BCE'}</Text>
-      </View>
-    </TouchableOpacity>
-  );
+  const handleScreenTap = () => {
+    toggleControls();
+    // Close chapter list when tapping screen
+    if (showChapterList) {
+      setShowChapterList(false);
+    }
+  };
 
-  const renderChapterItem = ({ item, index }) => (
-    <TouchableOpacity
-      style={[
-        styles.chapterItem,
-        index === currentChapter && styles.chapterItemActive
-      ]}
-      onPress={() => goToChapter(index)}
-    >
-      <View style={styles.chapterNumber}>
-        <Text style={[
-          styles.chapterNumberText,
-          index === currentChapter && styles.chapterNumberTextActive
-        ]}>
-          {index + 1}
-        </Text>
-      </View>
-      <View style={styles.chapterInfo}>
-        <Text 
-          style={[
-            styles.chapterTitleText,
-            index === currentChapter && styles.chapterTitleTextActive
-          ]}
-          numberOfLines={1}
-        >
-          {item.title}
-        </Text>
-      </View>
-      {index === currentChapter && (
-        <View style={styles.currentIndicator}>
-          <Ionicons name="checkmark" size={16} color={colors.primary} />
-        </View>
-      )}
-    </TouchableOpacity>
-  );
+  const handleWebViewScroll = (event) => {
+    // Hide controls when scrolling
+    if (isControlsVisible) {
+      hideControls();
+    }
+  };
 
   const styles = StyleSheet.create({
     container: {
       flex: 1,
       backgroundColor: isDark ? '#000000' : '#f5f5f5',
+    },
+    safeArea: {
+      flex: 1,
     },
     header: {
       flexDirection: 'row',
@@ -350,17 +435,27 @@ const ReaderScreen = () => {
       justifyContent: 'space-between',
       paddingVertical: 12,
       paddingHorizontal: 16,
+      paddingTop: safeArea.top + 12,
       backgroundColor: isDark ? '#1a1a1a' : '#ffffff',
       borderBottomWidth: 1,
       borderBottomColor: isDark ? '#333333' : '#e0e0e0',
+    },
+    headerContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      width: '100%',
+    },
+    headerTitleContainer: {
+      flex: 1,
+      alignItems: 'center',
+      marginHorizontal: 10,
     },
     headerTitle: {
       fontSize: 16,
       fontWeight: '600',
       color: isDark ? '#ffffff' : '#000000',
-      flex: 1,
       textAlign: 'center',
-      marginHorizontal: 10,
     },
     bookTitleHeader: {
       fontSize: 12,
@@ -370,27 +465,32 @@ const ReaderScreen = () => {
     },
     onlineBadge: {
       position: 'absolute',
-      top: 8,
-      right: 8,
+      top: -8,
+      right: -8,
       backgroundColor: '#27ae60',
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-      borderRadius: 12,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 8,
     },
     onlineBadgeText: {
       color: '#ffffff',
-      fontSize: 10,
+      fontSize: 8,
       fontWeight: '600',
     },
     webViewContainer: {
       flex: 1,
       backgroundColor: isDark ? '#1a1a1a' : '#ffffff',
     },
+    webViewWrapper: {
+      flex: 1,
+    },
     loadingContainer: {
       flex: 1,
       justifyContent: 'center',
       alignItems: 'center',
       backgroundColor: isDark ? '#1a1a1a' : '#ffffff',
+      paddingTop: safeArea.top,
+      paddingBottom: safeArea.bottom,
     },
     loadingText: {
       marginTop: 12,
@@ -400,28 +500,29 @@ const ReaderScreen = () => {
     },
     // Book Selector Styles
     bookSelector: {
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
+      flex: 1,
       backgroundColor: isDark ? 'rgba(0,0,0,0.95)' : 'rgba(255,255,255,0.98)',
-      zIndex: 1000,
-      padding: 20,
+      paddingTop: safeArea.top + 20,
+      paddingBottom: safeArea.bottom + 20,
+      paddingHorizontal: 20,
+    },
+    bookSelectorHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 20,
     },
     bookSelectorTitle: {
       fontSize: 24,
       fontWeight: 'bold',
       color: isDark ? '#ffffff' : '#000000',
       textAlign: 'center',
-      marginBottom: 20,
-      marginTop: 40,
+      flex: 1,
     },
     bookList: {
       flex: 1,
     },
     bookItem: {
-      backgroundColor: isDark ? '#2d2d2d' : '#ffffff',
       padding: 16,
       marginBottom: 12,
       borderRadius: 12,
@@ -445,7 +546,6 @@ const ReaderScreen = () => {
     bookTitle: {
       fontSize: 16,
       fontWeight: 'bold',
-      color: isDark ? '#ffffff' : '#000000',
       marginBottom: 4,
     },
     bookAuthor: {
@@ -456,6 +556,7 @@ const ReaderScreen = () => {
     bookMeta: {
       flexDirection: 'row',
       alignItems: 'center',
+      flexWrap: 'wrap',
     },
     bookMetaText: {
       fontSize: 12,
@@ -464,7 +565,6 @@ const ReaderScreen = () => {
     },
     bookDescription: {
       fontSize: 13,
-      color: isDark ? '#bdc3c7' : '#666',
       lineHeight: 18,
       marginBottom: 12,
     },
@@ -489,25 +589,19 @@ const ReaderScreen = () => {
       fontStyle: 'italic',
     },
     closeButton: {
-      position: 'absolute',
-      top: 40,
-      right: 20,
-      zIndex: 1001,
-      backgroundColor: isDark ? '#333' : '#f0f0f0',
-      borderRadius: 20,
       padding: 4,
     },
     // Chapter Dropdown Styles
     chapterDropdown: {
       position: 'absolute',
-      top: 60,
+      top: safeArea.top + 80,
       left: 20,
       right: 20,
       backgroundColor: isDark ? '#2d2d2d' : '#ffffff',
       borderRadius: 12,
       borderWidth: 1,
       borderColor: isDark ? '#444' : '#e0e0e0',
-      maxHeight: 300,
+      maxHeight: height * 0.6,
       shadowColor: '#000',
       shadowOffset: {
         width: 0,
@@ -534,7 +628,7 @@ const ReaderScreen = () => {
       color: isDark ? '#bdc3c7' : '#666',
     },
     chapterList: {
-      maxHeight: 250,
+      maxHeight: height * 0.6 - 80,
     },
     chapterItem: {
       flexDirection: 'row',
@@ -550,7 +644,6 @@ const ReaderScreen = () => {
       width: 28,
       height: 28,
       borderRadius: 14,
-      backgroundColor: isDark ? '#444' : '#f0f0f0',
       justifyContent: 'center',
       alignItems: 'center',
       marginRight: 12,
@@ -568,7 +661,6 @@ const ReaderScreen = () => {
     },
     chapterTitleText: {
       fontSize: 14,
-      color: isDark ? '#e0e0e0' : '#333',
     },
     chapterTitleTextActive: {
       color: colors.primary,
@@ -585,8 +677,10 @@ const ReaderScreen = () => {
       right: 0,
       backgroundColor: isDark ? '#1a1a1a' : '#ffffff',
       padding: 16,
+      paddingBottom: safeArea.bottom + 16,
       borderTopWidth: 1,
       borderTopColor: isDark ? '#333333' : '#e0e0e0',
+      zIndex: 100,
     },
     controlRow: {
       flexDirection: 'row',
@@ -633,11 +727,6 @@ const ReaderScreen = () => {
       fontSize: 14,
       marginRight: 4,
     },
-    chapterInfoText: {
-      fontSize: 14,
-      color: isDark ? '#ffffff' : '#000000',
-      fontWeight: '600',
-    },
     fontControls: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -670,7 +759,6 @@ const ReaderScreen = () => {
       height: '100%',
       backgroundColor: colors.primary,
       borderRadius: 2,
-      width: `${getProgressPercentage()}%`,
     },
     progressText: {
       fontSize: 12,
@@ -678,240 +766,322 @@ const ReaderScreen = () => {
       textAlign: 'center',
       marginBottom: 12,
     },
-    overlay: {
+    tapArea: {
       ...StyleSheet.absoluteFillObject,
       backgroundColor: 'transparent',
+      zIndex: 1,
     },
   });
 
   if (showBookSelector) {
     return (
-      <View style={styles.bookSelector}>
-        <TouchableOpacity 
-          style={styles.closeButton}
-          onPress={() => setShowBookSelector(false)}
-        >
-          <Ionicons 
-            name="close" 
-            size={24} 
-            color={isDark ? '#ffffff' : '#000000'} 
-          />
-        </TouchableOpacity>
+      <SafeAreaView style={[styles.container, styles.bookSelector]}>
+        <View style={styles.bookSelectorHeader}>
+          <TouchableOpacity 
+            style={styles.closeButton}
+            onPress={() => setShowBookSelector(false)}
+          >
+            <Ionicons 
+              name="close" 
+              size={24} 
+              color={isDark ? '#ffffff' : '#000000'} 
+            />
+          </TouchableOpacity>
+          
+          <Text style={styles.bookSelectorTitle}>Choose a Book</Text>
+          <View style={{ width: 32 }} /> {/* Spacer for alignment */}
+        </View>
         
-        <Text style={styles.bookSelectorTitle}>Choose a Book</Text>
         <Text style={[styles.bookDescription, { textAlign: 'center', marginBottom: 20 }]}>
           Select from {availableBooks.length} classic books
         </Text>
         
-        <ScrollView style={styles.bookList} showsVerticalScrollIndicator={false}>
-          {availableBooks.map(renderBookItem)}
+        <ScrollView 
+          style={styles.bookList} 
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: 20 }}
+        >
+          {availableBooks.map((bookItem) => (
+            <TouchableOpacity
+              key={bookItem.id}
+              style={[styles.bookItem, { backgroundColor: isDark ? '#2d2d2d' : '#ffffff' }]}
+              onPress={() => loadNewBook(bookItem)}
+            >
+              <View style={styles.bookItemHeader}>
+                <Image 
+                  source={{ uri: bookItem.cover }} 
+                  style={styles.bookCover}
+                  resizeMode="cover"
+                />
+                <View style={styles.bookInfo}>
+                  <Text style={[styles.bookTitle, { color: isDark ? '#ffffff' : '#000000' }]} numberOfLines={2}>
+                    {bookItem.title}
+                  </Text>
+                  <Text style={styles.bookAuthor}>by {bookItem.author}</Text>
+                  <View style={styles.bookMeta}>
+                    <Text style={styles.bookMetaText}>{formatPageCount(bookItem.pages)}</Text>
+                    <Text style={styles.bookMetaText}>•</Text>
+                    <Text style={styles.bookMetaText}>{getReadingTime(bookItem.content?.wordCount)}</Text>
+                    <Text style={styles.bookMetaText}>•</Text>
+                    <Text style={styles.bookMetaText}>{bookItem.rating} ★</Text>
+                  </View>
+                </View>
+              </View>
+              <Text style={[styles.bookDescription, { color: isDark ? '#bdc3c7' : '#666' }]} numberOfLines={2}>
+                {bookItem.description}
+              </Text>
+              <View style={styles.bookFooter}>
+                <View style={[styles.categoryBadge, { backgroundColor: colors.primary }]}>
+                  <Text style={styles.categoryText}>{bookItem.category}</Text>
+                </View>
+                <Text style={styles.publishedText}>
+                  {bookItem.published > 0 ? bookItem.published : Math.abs(bookItem.published) + ' BCE'}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          ))}
         </ScrollView>
-      </View>
+      </SafeAreaView>
     );
   }
 
   if (isLoading && !chapterContent) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={styles.loadingText}>
-          {currentBookMetadata ? `Loading ${currentBookMetadata.title}...` : 'Loading book...'}
-        </Text>
-        {currentBookMetadata && (
-          <Text style={[styles.loadingText, { fontSize: 14, marginTop: 8 }]}>
-            by {currentBookMetadata.author}
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>
+            {currentBookMetadata ? `Loading ${currentBookMetadata.title}...` : 'Loading book...'}
           </Text>
-        )}
-      </View>
+          {currentBookMetadata && (
+            <Text style={[styles.loadingText, { fontSize: 14, marginTop: 8 }]}>
+              by {currentBookMetadata.author}
+            </Text>
+          )}
+        </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <StatusBar 
         backgroundColor={isDark ? '#000000' : '#ffffff'} 
         barStyle={isDark ? 'light-content' : 'dark-content'} 
       />
       
-      {isControlsVisible && (
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Ionicons 
-              name="chevron-back" 
-              size={24} 
-              color={isDark ? '#ffffff' : '#000000'} 
-            />
-          </TouchableOpacity>
-          
-          <View style={{ flex: 1, alignItems: 'center' }}>
-            <Text style={styles.headerTitle} numberOfLines={1}>
-              {chapterTitle}
-            </Text>
-            {currentBookMetadata && (
-              <Text style={styles.bookTitleHeader} numberOfLines={1}>
-                {currentBookMetadata.title}
-              </Text>
-            )}
-            {isOnlineBook && (
-              <View style={styles.onlineBadge}>
-                <Text style={styles.onlineBadgeText}>ONLINE</Text>
+      <View style={styles.safeArea}>
+        <Animated.View style={{ opacity: fadeAnim }}>
+          {isControlsVisible && (
+            <View style={styles.header}>
+              <View style={styles.headerContent}>
+                <TouchableOpacity onPress={() => navigation.goBack()}>
+                  <Ionicons 
+                    name="chevron-back" 
+                    size={24} 
+                    color={isDark ? '#ffffff' : '#000000'} 
+                  />
+                </TouchableOpacity>
+                
+                <View style={styles.headerTitleContainer}>
+                  <Text style={styles.headerTitle} numberOfLines={1}>
+                    {chapterTitle}
+                  </Text>
+                  {currentBookMetadata && (
+                    <Text style={styles.bookTitleHeader} numberOfLines={1}>
+                      {currentBookMetadata.title}
+                    </Text>
+                  )}
+                  {isOnlineBook && (
+                    <View style={styles.onlineBadge}>
+                      <Text style={styles.onlineBadgeText}>ONLINE</Text>
+                    </View>
+                  )}
+                </View>
+                
+                <TouchableOpacity onPress={() => setShowBookSelector(true)}>
+                  <Ionicons 
+                    name="library-outline" 
+                    size={24} 
+                    color={isDark ? '#ffffff' : '#000000'} 
+                  />
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+        </Animated.View>
+
+        {/* WebView Container */}
+        <View style={styles.webViewWrapper}>
+          <WebView
+            ref={webViewRef}
+            source={{ html: chapterContent }}
+            onMessage={handleWebViewMessage}
+            style={styles.webViewContainer}
+            onLoadEnd={() => setIsLoading(false)}
+            onLoadStart={() => setIsLoading(true)}
+            javaScriptEnabled={true}
+            domStorageEnabled={true}
+            startInLoadingState={true}
+            scalesPageToFit={true}
+            scrollEnabled={true}
+            nestedScrollEnabled={true}
+            onScroll={handleWebViewScroll}
+            renderLoading={() => (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color={colors.primary} />
+                <Text style={styles.loadingText}>Loading chapter...</Text>
               </View>
             )}
-          </View>
+          />
           
-          <TouchableOpacity onPress={() => setShowBookSelector(true)}>
-            <Ionicons 
-              name="library-outline" 
-              size={24} 
-              color={isDark ? '#ffffff' : '#000000'} 
-            />
-          </TouchableOpacity>
-        </View>
-      )}
-
-      <TouchableOpacity 
-        style={styles.webViewContainer}
-        activeOpacity={1}
-        onPress={() => {
-          toggleControls();
-          setShowChapterList(false);
-        }}
-      >
-        <WebView
-          ref={webViewRef}
-          source={{ html: chapterContent }}
-          onMessage={handleWebViewMessage}
-          style={styles.webViewContainer}
-          onLoadEnd={() => setIsLoading(false)}
-          onLoadStart={() => setIsLoading(true)}
-          javaScriptEnabled={true}
-          domStorageEnabled={true}
-          startInLoadingState={true}
-          renderLoading={() => (
-            <View style={styles.loadingContainer}>
+          {/* Transparent tap area */}
+          <TouchableOpacity 
+            style={styles.tapArea}
+            activeOpacity={1}
+            onPress={handleScreenTap}
+          />
+          
+          {isLoading && (
+            <View style={[styles.loadingContainer, StyleSheet.absoluteFill]}>
               <ActivityIndicator size="large" color={colors.primary} />
               <Text style={styles.loadingText}>Loading chapter...</Text>
             </View>
           )}
-        />
-        
-        {isLoading && (
-          <View style={[styles.loadingContainer, { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }]}>
-            <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={styles.loadingText}>Loading chapter...</Text>
+        </View>
+
+        {/* Chapter Dropdown List */}
+        {showChapterList && (
+          <View style={styles.chapterDropdown}>
+            <View style={styles.chapterDropdownHeader}>
+              <Text style={styles.chapterDropdownTitle}>Chapters</Text>
+              <Text style={styles.chapterDropdownSubtitle}>
+                {totalChapters} chapters • Current: {currentChapter + 1}
+              </Text>
+            </View>
+            <ScrollView 
+              style={styles.chapterList}
+              showsVerticalScrollIndicator={true}
+              ref={scrollViewRef}
+              contentContainerStyle={{ paddingBottom: 10 }}
+            >
+              {chapters.map((chapter, index) => (
+                <TouchableOpacity
+                  key={`chapter-${index}`}
+                  style={[
+                    styles.chapterItem,
+                    index === currentChapter && styles.chapterItemActive,
+                    { backgroundColor: isDark ? '#2d2d2d' : '#ffffff' }
+                  ]}
+                  onPress={() => goToChapter(index)}
+                >
+                  <View style={[styles.chapterNumber, { backgroundColor: isDark ? '#444' : '#f0f0f0' }]}>
+                    <Text style={[
+                      styles.chapterNumberText,
+                      index === currentChapter && styles.chapterNumberTextActive
+                    ]}>
+                      {index + 1}
+                    </Text>
+                  </View>
+                  <View style={styles.chapterInfo}>
+                    <Text 
+                      style={[
+                        styles.chapterTitleText,
+                        { color: isDark ? '#e0e0e0' : '#333' },
+                        index === currentChapter && styles.chapterTitleTextActive
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {chapter.title}
+                    </Text>
+                  </View>
+                  {index === currentChapter && (
+                    <View style={styles.currentIndicator}>
+                      <Ionicons name="checkmark" size={16} color={colors.primary} />
+                    </View>
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
           </View>
         )}
-      </TouchableOpacity>
 
-      {/* Chapter Dropdown List */}
-      {showChapterList && (
-        <View style={styles.chapterDropdown}>
-          <View style={styles.chapterDropdownHeader}>
-            <Text style={styles.chapterDropdownTitle}>Chapters</Text>
-            <Text style={styles.chapterDropdownSubtitle}>
-              {totalChapters} chapters • Current: {currentChapter + 1}
-            </Text>
-          </View>
-          <FlatList
-            data={chapters}
-            renderItem={renderChapterItem}
-            keyExtractor={(item, index) => `chapter-${index}`}
-            style={styles.chapterList}
-            showsVerticalScrollIndicator={true}
-            initialScrollIndex={Math.max(0, currentChapter - 2)}
-            getItemLayout={(data, index) => ({
-              length: 56,
-              offset: 56 * index,
-              index,
-            })}
-          />
-        </View>
-      )}
-
-      {isControlsVisible && (
-        <View style={styles.controls}>
-          <View style={styles.progressBar}>
-            <View style={styles.progressFill} />
-          </View>
-          <Text style={styles.progressText}>
-            Chapter {currentChapter + 1} of {totalChapters} ({Math.round(getProgressPercentage())}%)
-            {currentBookMetadata && ` • ${currentBookMetadata.title}`}
-          </Text>
-          
-          <View style={styles.chapterControls}>
-            <TouchableOpacity 
-              style={[
-                styles.chapterButton,
-                currentChapter <= 0 && styles.chapterButtonDisabled
-              ]}
-              onPress={goToPreviousChapter}
-              disabled={currentChapter <= 0}
-            >
-              <Text style={styles.chapterButtonText}>Previous</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.chapterNavButton}
-              onPress={() => setShowChapterList(!showChapterList)}
-            >
-              <Text style={styles.chapterNavButtonText}>
-                Chapters ({currentChapter + 1}/{totalChapters})
+        {/* Controls */}
+        <Animated.View style={[styles.controls, { opacity: fadeAnim }]}>
+          {isControlsVisible && (
+            <>
+              <View style={styles.progressBar}>
+                <View style={[styles.progressFill, { width: `${progressPercentage}%` }]} />
+              </View>
+              <Text style={styles.progressText}>
+                Chapter {currentChapter + 1} of {totalChapters} ({Math.round(progressPercentage)}%)
+                {currentBookMetadata && ` • ${currentBookMetadata.title}`}
               </Text>
-              <Ionicons 
-                name={showChapterList ? "chevron-up" : "chevron-down"} 
-                size={16} 
-                color={isDark ? '#ffffff' : '#000000'} 
-              />
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={[
-                styles.chapterButton,
-                currentChapter >= totalChapters - 1 && styles.chapterButtonDisabled
-              ]}
-              onPress={goToNextChapter}
-              disabled={currentChapter >= totalChapters - 1}
-            >
-              <Text style={styles.chapterButtonText}>Next</Text>
-            </TouchableOpacity>
-          </View>
-          
-          <View style={styles.controlRow}>
-            <TouchableOpacity 
-              style={styles.fontButton}
-              onPress={decreaseFontSize}
-            >
-              <Ionicons name="remove" size={20} color="#ffffff" />
-            </TouchableOpacity>
-            
-            <View style={styles.fontControls}>
-              <Text style={styles.fontSizeText}>A</Text>
-              <Text style={styles.fontSizeText}>{fontSize}px</Text>
-              <Text style={styles.fontSizeText}>A</Text>
-            </View>
-            
-            <TouchableOpacity 
-              style={styles.fontButton}
-              onPress={increaseFontSize}
-            >
-              <Ionicons name="add" size={20} color="#ffffff" />
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
-
-      {/* Invisible overlay for tapping to toggle controls and close dropdown */}
-      {!isControlsVisible && (
-        <TouchableOpacity 
-          style={styles.overlay} 
-          activeOpacity={1}
-          onPress={() => {
-            toggleControls();
-            setShowChapterList(false);
-          }}
-        />
-      )}
-    </View>
+              
+              <View style={styles.chapterControls}>
+                <TouchableOpacity 
+                  style={[
+                    styles.chapterButton,
+                    currentChapter <= 0 && styles.chapterButtonDisabled
+                  ]}
+                  onPress={goToPreviousChapter}
+                  disabled={currentChapter <= 0}
+                >
+                  <Text style={styles.chapterButtonText}>Previous</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                  style={styles.chapterNavButton}
+                  onPress={() => setShowChapterList(!showChapterList)}
+                >
+                  <Text style={styles.chapterNavButtonText}>
+                    Chapters ({currentChapter + 1}/{totalChapters})
+                  </Text>
+                  <Ionicons 
+                    name={showChapterList ? "chevron-up" : "chevron-down"} 
+                    size={16} 
+                    color={isDark ? '#ffffff' : '#000000'} 
+                  />
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                  style={[
+                    styles.chapterButton,
+                    currentChapter >= totalChapters - 1 && styles.chapterButtonDisabled
+                  ]}
+                  onPress={goToNextChapter}
+                  disabled={currentChapter >= totalChapters - 1}
+                >
+                  <Text style={styles.chapterButtonText}>Next</Text>
+                </TouchableOpacity>
+              </View>
+              
+              <View style={styles.controlRow}>
+                <TouchableOpacity 
+                  style={styles.fontButton}
+                  onPress={decreaseFontSize}
+                >
+                  <Ionicons name="remove" size={20} color="#ffffff" />
+                </TouchableOpacity>
+                
+                <View style={styles.fontControls}>
+                  <Text style={[styles.fontSizeText, { fontSize: 14 }]}>A</Text>
+                  <Text style={styles.fontSizeText}>{fontSize}px</Text>
+                  <Text style={[styles.fontSizeText, { fontSize: 18 }]}>A</Text>
+                </View>
+                
+                <TouchableOpacity 
+                  style={styles.fontButton}
+                  onPress={increaseFontSize}
+                >
+                  <Ionicons name="add" size={20} color="#ffffff" />
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+        </Animated.View>
+      </View>
+    </SafeAreaView>
   );
 };
 

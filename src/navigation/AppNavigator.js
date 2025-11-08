@@ -2,8 +2,10 @@
 import React from 'react';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { getFocusedRouteNameFromRoute } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme, ThemeConstants } from '../contexts/ThemeContext';
 
 // Screens
 import SplashScreen from '../screens/SplashScreen';
@@ -22,17 +24,36 @@ import SettingsScreen from '../screens/SettingScreen';
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 
-// Static colors
-const COLORS = {
-  primary: '#6366f1',
-  background: '#ffffff',
-  card: '#f8fafc',
-  text: '#1e293b',
-  textSecondary: '#64748b',
-  border: '#e2e8f0',
-};
-
 const MainTabs = () => {
+  const { colors, isDark } = useTheme();
+
+  const getTabBarStyle = (route) => {
+    const routeName = getFocusedRouteNameFromRoute(route) ?? 'Home';
+    
+    // Hide tab bar on specific screens
+    const hideTabBarRoutes = ['Reader', 'Payment'];
+    if (hideTabBarRoutes.includes(routeName)) {
+      return { display: 'none' };
+    }
+
+    return {
+      backgroundColor: colors.surface,
+      borderTopColor: colors.border,
+      borderTopWidth: 1,
+      height: 60 + ThemeConstants.spacing.sm,
+      paddingBottom: ThemeConstants.spacing.sm,
+      paddingTop: ThemeConstants.spacing.sm,
+      elevation: 8,
+      shadowColor: colors.shadow,
+      shadowOffset: {
+        width: 0,
+        height: -2,
+      },
+      shadowOpacity: 0.1,
+      shadowRadius: 8,
+    };
+  };
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -51,29 +72,28 @@ const MainTabs = () => {
 
           return <Ionicons name={iconName} size={size} color={color} />;
         },
-        tabBarActiveTintColor: COLORS.primary,
-        tabBarInactiveTintColor: COLORS.textSecondary,
-        tabBarStyle: {
-          backgroundColor: COLORS.card,
-          borderTopColor: COLORS.border,
-          height: 60,
-          paddingBottom: 8,
-          paddingTop: 8,
-        },
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.textSecondary,
+        tabBarStyle: getTabBarStyle(route),
         tabBarLabelStyle: {
-          fontSize: 12,
-          fontWeight: '500',
+          fontSize: ThemeConstants.typography.sizes.xs,
+          fontWeight: '600',
+          marginTop: 2,
         },
         headerStyle: {
-          backgroundColor: COLORS.card,
+          backgroundColor: colors.surface,
           shadowColor: 'transparent',
           elevation: 0,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border,
         },
-        headerTintColor: COLORS.text,
+        headerTintColor: colors.text,
         headerTitleStyle: {
-          fontWeight: '600',
-          fontSize: 18,
+          fontWeight: '700',
+          fontSize: ThemeConstants.typography.sizes.lg,
         },
+        headerTitleAlign: 'center',
+        tabBarHideOnKeyboard: true,
       })}
     >
       <Tab.Screen 
@@ -82,13 +102,18 @@ const MainTabs = () => {
         options={{ 
           title: 'Discover',
           headerTitle: 'EBookVerse',
+          headerTitleStyle: {
+            fontWeight: '800',
+            fontSize: ThemeConstants.typography.sizes.xl,
+            color: colors.text,
+          },
         }} 
       />
       <Tab.Screen 
         name="Library" 
         component={LibraryScreen} 
         options={{ 
-          title: 'My Library',
+          title: 'Library',
           headerTitle: 'My Library',
         }} 
       />
@@ -97,7 +122,11 @@ const MainTabs = () => {
         component={DownloadsScreen} 
         options={{ 
           title: 'Downloads',
-          headerTitle: 'Downloads',
+          headerTitle: 'My Downloads',
+          tabBarBadge: () => {
+            // You can add dynamic badge count here
+            return null;
+          },
         }} 
       />
       <Tab.Screen 
@@ -112,101 +141,204 @@ const MainTabs = () => {
   );
 };
 
+const AuthStack = () => {
+  const { colors } = useTheme();
+
+  return (
+    <Stack.Navigator>
+      <Stack.Screen 
+        name="Onboarding" 
+        component={OnboardingScreen} 
+        options={{ 
+          headerShown: false,
+          cardStyle: { backgroundColor: colors.background }
+        }}
+      />
+      <Stack.Screen 
+        name="Login" 
+        component={LoginScreen} 
+        options={{ 
+          headerShown: true,
+          title: 'Sign In',
+          headerBackTitle: 'Back',
+          headerStyle: {
+            backgroundColor: colors.surface,
+            shadowColor: 'transparent',
+            elevation: 0,
+          },
+          headerTintColor: colors.text,
+          headerTitleStyle: {
+            fontWeight: '600',
+          },
+          cardStyle: { backgroundColor: colors.background }
+        }}
+      />
+      <Stack.Screen 
+        name="Register" 
+        component={RegisterScreen} 
+        options={{ 
+          headerShown: true,
+          title: 'Create Account',
+          headerBackTitle: 'Back',
+          headerStyle: {
+            backgroundColor: colors.surface,
+            shadowColor: 'transparent',
+            elevation: 0,
+          },
+          headerTintColor: colors.text,
+          headerTitleStyle: {
+            fontWeight: '600',
+          },
+          cardStyle: { backgroundColor: colors.background }
+        }}
+      />
+    </Stack.Navigator>
+  );
+};
+
+const AppStack = () => {
+  const { colors, isDark } = useTheme();
+
+  const getHeaderStyle = (route) => {
+    // Custom header styles for specific screens
+    const transparentHeaderRoutes = ['Reader'];
+    if (transparentHeaderRoutes.includes(route.name)) {
+      return {
+        backgroundColor: 'transparent',
+        shadowColor: 'transparent',
+        elevation: 0,
+      };
+    }
+
+    return {
+      backgroundColor: colors.surface,
+      shadowColor: colors.shadow,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 8,
+      elevation: 4,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    };
+  };
+
+  return (
+    <Stack.Navigator
+      screenOptions={({ route }) => ({
+        headerStyle: getHeaderStyle(route),
+        headerTintColor: colors.text,
+        headerTitleStyle: {
+          fontWeight: '600',
+          fontSize: ThemeConstants.typography.sizes.lg,
+        },
+        headerBackTitle: 'Back',
+        cardStyle: {
+          backgroundColor: colors.background,
+        },
+        animationEnabled: true,
+        gestureEnabled: true,
+      })}
+    >
+      <Stack.Screen 
+        name="MainTabs" 
+        component={MainTabs} 
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen 
+        name="BookDetails" 
+        component={BookDetailsScreen}
+        options={({ route }) => ({ 
+          headerShown: true,
+          headerBackTitle: 'Back',
+          title: route.params?.book?.title?.length > 24 
+            ? route.params.book.title.substring(0, 24) + '...' 
+            : route.params?.book?.title || 'Book Details',
+          headerTitleStyle: {
+            fontWeight: '600',
+            fontSize: ThemeConstants.typography.sizes.md,
+          },
+        })}
+      />
+      <Stack.Screen 
+        name="Payment" 
+        component={PaymentScreen}
+        options={{ 
+          headerShown: true,
+          headerBackTitle: 'Cancel',
+          title: 'Complete Purchase',
+          headerStyle: {
+            backgroundColor: colors.surface,
+            shadowColor: colors.shadow,
+            elevation: 8,
+          },
+          presentation: 'modal',
+        }}
+      />
+      <Stack.Screen 
+        name="Reader" 
+        component={ReaderScreen}
+        options={{ 
+          headerShown: false,
+          gestureEnabled: true,
+          animation: 'slide_from_bottom',
+        }}
+      />
+      <Stack.Screen 
+        name="Settings" 
+        component={SettingsScreen}
+        options={{ 
+          headerShown: true,
+          headerBackTitle: 'Back',
+          title: 'Settings',
+          headerStyle: {
+            backgroundColor: colors.surface,
+          },
+        }}
+      />
+    </Stack.Navigator>
+  );
+};
+
 const AppNavigator = () => {
   const { user, isLoading } = useAuth();
+  const { colors, isDark } = useTheme();
 
   if (isLoading) {
     return <SplashScreen />;
   }
 
+  const globalScreenOptions = {
+    headerStyle: {
+      backgroundColor: colors.surface,
+      shadowColor: 'transparent',
+      elevation: 0,
+    },
+    headerTintColor: colors.text,
+    headerTitleStyle: {
+      fontWeight: '600',
+    },
+    cardStyle: {
+      backgroundColor: colors.background,
+    },
+    animation: 'slide_from_right',
+  };
+
   return (
     <Stack.Navigator 
-      screenOptions={{
-        headerStyle: {
-          backgroundColor: COLORS.card,
-          shadowColor: 'transparent',
-          elevation: 0,
-        },
-        headerTintColor: COLORS.text,
-        headerTitleStyle: {
-          fontWeight: '600',
-        },
-        cardStyle: {
-          backgroundColor: COLORS.background,
-        },
-      }}
+      screenOptions={globalScreenOptions}
     >
       {!user ? (
-        <>
-          <Stack.Screen 
-            name="Onboarding" 
-            component={OnboardingScreen} 
-            options={{ headerShown: false }}
-          />
-          <Stack.Screen 
-            name="Login" 
-            component={LoginScreen} 
-            options={{ 
-              headerShown: true,
-              title: 'Sign In',
-              headerBackTitle: 'Back',
-            }}
-          />
-          <Stack.Screen 
-            name="Register" 
-            component={RegisterScreen} 
-            options={{ 
-              headerShown: true,
-              title: 'Create Account',
-              headerBackTitle: 'Back',
-            }}
-          />
-        </>
+        <Stack.Screen 
+          name="Auth" 
+          component={AuthStack} 
+          options={{ headerShown: false }}
+        />
       ) : (
-        <>
-          <Stack.Screen 
-            name="MainTabs" 
-            component={MainTabs} 
-            options={{ headerShown: false }}
-          />
-          <Stack.Screen 
-            name="BookDetails" 
-            component={BookDetailsScreen}
-            options={({ route }) => ({ 
-              headerShown: true,
-              headerBackTitle: 'Back',
-              title: route.params?.book?.title?.length > 20 
-                ? route.params.book.title.substring(0, 20) + '...' 
-                : route.params?.book?.title || 'Book Details',
-            })}
-          />
-          <Stack.Screen 
-            name="Payment" 
-            component={PaymentScreen}
-            options={{ 
-              headerShown: true,
-              headerBackTitle: 'Cancel',
-              title: 'Complete Purchase',
-            }}
-          />
-          <Stack.Screen 
-            name="Reader" 
-            component={ReaderScreen}
-            options={{ 
-              headerShown: false,
-              gestureEnabled: false,
-            }}
-          />
-          <Stack.Screen 
-            name="Settings" 
-            component={SettingsScreen}
-            options={{ 
-              headerShown: true,
-              headerBackTitle: 'Back',
-              title: 'Settings',
-            }}
-          />
-        </>
+        <Stack.Screen 
+          name="App" 
+          component={AppStack} 
+          options={{ headerShown: false }}
+        />
       )}
     </Stack.Navigator>
   );
