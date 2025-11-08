@@ -1,0 +1,41 @@
+{
+  "license": "0BSD",
+  "main": "index.js",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web"
+  },
+  "dependencies": {
+    "@expo/vector-icons": "^14.1.0",
+    "@lottiefiles/dotlottie-react": "0.6.5",
+    "@react-native-async-storage/async-storage": "2.1.2",
+    "@react-navigation/bottom-tabs": "^7.8.1",
+    "@react-navigation/native": "^7.1.19",
+    "@react-navigation/stack": "^7.6.2",
+    "@supabase/supabase-js": "*",
+    "axios": "^1.13.2",
+    "eas-cli": "^16.26.0",
+    "expo": "~54.0.0",
+    "expo-file-system": "~18.1.11",
+    "expo-font": "~13.3.2",
+    "expo-sharing": "~13.1.5",
+    "expo-status-bar": "~2.2.3",
+    "lottie-react-native": "7.2.2",
+    "lucide-react-native": "^0.552.0",
+    "react": "19.0.0",
+    "react-native": "0.79.6",
+    "react-native-gesture-handler": "~2.24.0",
+    "react-native-reanimated": "~3.17.4",
+    "react-native-safe-area-context": "5.4.0",
+    "react-native-screens": "~4.11.1",
+    "react-native-svg": "15.11.2",
+    "react-native-vector-icons": "^10.3.0",
+    "react-native-webview": "13.13.5"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.20.0"
+  },
+  "private": true
+}
